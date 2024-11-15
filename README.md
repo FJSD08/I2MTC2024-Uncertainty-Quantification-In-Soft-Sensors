@@ -1,0 +1,3 @@
+% The first repository implements the model with a Rolling Window, which allows for dynamic adaptation of the input data by continuously updating the feature set based on a fixed-length window of recent observations. This approach is particularly useful for scenarios where the data may exhibit temporal dependencies or gradual changes over time. 
+
+% The second repository contains the implementation without a Rolling Window, where the input data remains static over time, resulting in fixed prediction intervals that do not adjust dynamically. This version provides a simpler approach that may be more suitable for datasets where temporal variation is minimal or not a concern. 
