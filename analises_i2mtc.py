@@ -7,6 +7,8 @@ Original file is located at
     https://colab.research.google.com/drive/1Uf8rZHLnedNUKFnBYzXV4qO7hn6gOOTd
 """
 
+!pip install scikit-posthocs
+
 import pandas as pd
 import os
 
@@ -250,132 +252,46 @@ for column in columns:
     else:
         print("Rejeitamos a hipótese nula: os dados não seguem uma distribuição normal.\n")
 
-""" ANOVA para Comparar Todos os Grupos:"""
+"""O Teste de Kruskal-Wallis: pra determina se há diferenças significativas entre os grupos. E o Teste de Dunn: Pra identificar quais grupos específicos apresentam diferenças significativas.  O ajuste de Bonferroni é usado para evitar falsos positivos."""
 
-from scipy.stats import f_oneway
+import pandas as pd
+from scipy.stats import kruskal
+import scikit_posthocs as sp
 
-# Teste ANOVA
-stat, p_value = f_oneway(
-    df['T-Student'],
-    df['Full'],
-    df['Bootstrap'],
-    df['Split']
-)
+# Supondo que você tenha carregado seus dados no DataFrame `df`
+# Certifique-se de que as colunas correspondem aos grupos mencionados
+columns = ['T-Student', 'Full', 'Bootstrap', 'Split']
+data = df[columns]
 
-print(f"F-statistic: {stat}")
-print(f"P-value: {p_value}")
+# Separar os valores de cada grupo
+t_student = data['T-Student']
+full = data['Full']
+bootstrap = data['Bootstrap']
+split = data['Split']
+
+# Aplicar o teste de Kruskal-Wallis
+stat, p_value = kruskal(t_student, full, bootstrap, split)
+print(f"Estatística do teste: {stat}")
+print(f"P-valor: {p_value}")
 
 if p_value < 0.05:
-    print("Rejeitamos a hipótese nula: existe diferença significativa entre os grupos.")
+    print("Rejeitamos a hipótese nula: pelo menos um dos grupos é diferente.")
 else:
-    print("Não rejeitamos a hipótese nula: não há diferença significativa entre os grupos.")
+    print("Não rejeitamos a hipótese nula: todos os grupos têm distribuições semelhantes.")
 
-"""Hipótese Nula (
-𝐻
-0
-H
-0
-​
- ):
+# Organizar os dados no formato longo para o teste de Dunn
+data_long = pd.melt(data.reset_index(), id_vars=['index'], value_vars=columns)
+data_long.columns = ['Index', 'Group', 'Value']
 
-𝐻
-0
-H
-0
-​
- : As médias dos grupos são iguais.
-Hipótese Alternativa (
-𝐻
-𝑎
-H
-a
-​
- ):
+# Verificar se as colunas foram configuradas corretamente
+assert 'Value' in data_long.columns, "A coluna 'Value' não está no DataFrame."
+assert 'Group' in data_long.columns, "A coluna 'Group' não está no DataFrame."
 
-𝐻
-𝑎
-H
-a
-​
- : Pelo menos um grupo tem uma média significativamente diferente.
-Decisão: Rejeitamos a hipótese nula (
-𝐻
-0
-H
-0
-​
- ), pois o
-𝑝
-p-valor é muito menor que 0.05.
+# Aplicar o teste de Dunn com ajuste Bonferroni
+posthoc = sp.posthoc_dunn(data_long, val_col='Value', group_col='Group', p_adjust='bonferroni')
 
-Conclusão: Existe uma diferença estatisticamente significativa entre as médias dos grupos.
-
-Para identificar quais grupos diferem entre si, é necessário realizar testes post-hoc, como o Tukey HSD (Honest Significant Difference)
-"""
-
-from statsmodels.stats.multicomp import pairwise_tukeyhsd
-
-# Organizar os dados em formato longo
-import pandas as pd
-data_long = pd.melt(df.reset_index(), id_vars=['index'], value_vars=['T-Student', 'Full', 'Bootstrap', 'Split'])
-data_long.columns = ['Index', 'Method', 'Coverage']
-
-# Aplicar o teste Tukey HSD
-tukey = pairwise_tukeyhsd(endog=data_long['Coverage'], groups=data_long['Method'], alpha=0.05)
-
-# Exibir os resultados
-print(tukey)
-
-"""O teste Tukey HSD confirma que:
-
-Existem diferenças estatisticamente significativas entre a maioria dos pares de métodos, exceto entre Full_Cobertura e Split_Cobertura, onde não há evidências para rejeitar a igualdade das médias.
-
-
-O Bootstrap_Cobertura parece diferir significativamente de todos os outros métodos, reforçando sua distinção como potencialmente melhor.
-"""
-
-from statsmodels.stats.multicomp import MultiComparison
-import matplotlib.pyplot as plt
-
-# Configurar os dados para o teste
-mc = MultiComparison(data_long['Coverage'], data_long['Method'])
-tukey_result = mc.tukeyhsd(alpha=0.05)
-
-# Plotar o gráfico de comparações Tukey
-fig = tukey_result.plot_simultaneous(comparison_name='T-Student', figsize=(8, 6))
-plt.title('Tukey HSD Confidence Intervals')
-plt.xlabel('Mean Difference')
-plt.grid(True, linestyle='--', alpha=0.6)
-plt.show()
-
-import numpy as np
-import pandas as pd
-import seaborn as sns
-
-# Criar matriz de valores p ajustados (baseado no resultado do Tukey)
-p_values_matrix = pd.DataFrame(
-    tukey_result._results_table.data[1:],
-    columns=tukey_result._results_table.data[0]
-)
-
-# Filtrar apenas os valores p e criar um heatmap
-p_values = p_values_matrix.pivot(index='group1', columns='group2', values='p-adj')
-
-plt.figure(figsize=(8, 6))
-sns.heatmap(p_values, annot=True, fmt=".3f", cmap="coolwarm", cbar=True)
-plt.title('P-value Matrix (Tukey HSD)')
-plt.show()
-
-# Plotar o violin plot
-plt.figure(figsize=(8, 6))
-sns.violinplot(x='Method', y='Coverage', data=data_long, palette='muted')
-
-# Ajustar o gráfico
-plt.title('Coverage Distributions by Method', fontsize=14)
-plt.xlabel('Method', fontsize=12)
-plt.ylabel('Coverage', fontsize=12)
-plt.grid(True, linestyle='--', alpha=0.6)
-plt.show()
+print("\nResultados do teste de Dunn (pós-hoc):")
+print(posthoc)
 
 """SHAPIRO-WILK TEST para verificar a normalidade Dados de Largura"""
 
@@ -403,78 +319,160 @@ for column in columns:
     else:
         print("Rejeitamos a hipótese nula: os dados não seguem uma distribuição normal.\n")
 
-"""ANOVA para Comparar Todos os Grupos:"""
+"""O Teste de Kruskal-Wallis: pra determina se há diferenças significativas entre os grupos. E o Teste de Dunn: Pra identificar quais grupos específicos apresentam diferenças significativas.  O ajuste de Bonferroni é usado para evitar falsos positivos."""
 
-from scipy.stats import f_oneway
+import pandas as pd
+from scipy.stats import kruskal
+import scikit_posthocs as sp
 
-# Teste ANOVA
-stat, p_value = f_oneway(
-    df['T-Student'],
-    df['Full'],
-    df['Bootstrap'],
-    df['Split']
-)
+# Supondo que você tenha carregado seus dados no DataFrame `df`
+# Certifique-se de que as colunas correspondem aos grupos mencionados
+columns = ['T-Student', 'Full', 'Bootstrap', 'Split']
+data = df[columns]
 
-print(f"F-statistic: {stat}")
-print(f"P-value: {p_value}")
+# Separar os valores de cada grupo
+t_student = data['T-Student']
+full = data['Full']
+bootstrap = data['Bootstrap']
+split = data['Split']
+
+# Aplicar o teste de Kruskal-Wallis
+stat, p_value = kruskal(t_student, full, bootstrap, split)
+print(f"Estatística do teste: {stat}")
+print(f"P-valor: {p_value}")
 
 if p_value < 0.05:
-    print("Rejeitamos a hipótese nula: existe diferença significativa entre os grupos.")
+    print("Rejeitamos a hipótese nula: pelo menos um dos grupos é diferente.")
 else:
-    print("Não rejeitamos a hipótese nula: não há diferença significativa entre os grupos.")
+    print("Não rejeitamos a hipótese nula: todos os grupos têm distribuições semelhantes.")
 
-from statsmodels.stats.multicomp import pairwise_tukeyhsd
+# Organizar os dados no formato longo para o teste de Dunn
+data_long = pd.melt(data.reset_index(), id_vars=['index'], value_vars=columns)
+data_long.columns = ['Index', 'Group', 'Value']
 
-# Organizar os dados em formato longo
+# Verificar se as colunas foram configuradas corretamente
+assert 'Value' in data_long.columns, "A coluna 'Value' não está no DataFrame."
+assert 'Group' in data_long.columns, "A coluna 'Group' não está no DataFrame."
+
+# Aplicar o teste de Dunn com ajuste Bonferroni
+posthoc = sp.posthoc_dunn(data_long, val_col='Value', group_col='Group', p_adjust='bonferroni')
+
+print("\nResultados do teste de Dunn (pós-hoc):")
+print(posthoc)
+
+"""SHAPIRO-WILK TEST para verificar a normalidade Dados de Cobertura COM SW190"""
+
+### upload arquivo
+from google.colab import files
+uploaded = files.upload()
+
+df = pd.read_excel('coberturaSW_results.xlsx')
+df
+
+from scipy.stats import shapiro
+
+# Selecionar as colunas desejadas como uma lista
+columns = ['T-Student', 'Full', 'Bootstrap', 'Split']
+
+# Iterar sobre cada coluna e aplicar o teste Shapiro-Wilk
+for column in columns:
+    data = df[column]  # Selecionar os dados da coluna
+    stat, p_value = shapiro(data)
+    print(f"Coluna: {column}")
+    print(f"Estatística do teste: {stat}")
+    print(f"P-valor: {p_value}")
+    if p_value > 0.05:
+        print("Não rejeitamos a hipótese nula: os dados seguem uma distribuição normal.\n")
+    else:
+        print("Rejeitamos a hipótese nula: os dados não seguem uma distribuição normal.\n")
+
+"""O Teste de Kruskal-Wallis: pra determina se há diferenças significativas entre os grupos. E o Teste de Dunn: Pra identificar quais grupos específicos apresentam diferenças significativas.  O ajuste de Bonferroni é usado para evitar falsos positivos."""
+
 import pandas as pd
-data_long = pd.melt(df.reset_index(), id_vars=['index'], value_vars=['T-Student', 'Full', 'Bootstrap', 'Split'])
-data_long.columns = ['Index', 'Method', 'Mean Width']
+from scipy.stats import kruskal
+import scikit_posthocs as sp
 
-# Aplicar o teste Tukey HSD
-tukey = pairwise_tukeyhsd(endog=data_long['Mean Width'], groups=data_long['Method'], alpha=0.05)
+# Supondo que você tenha carregado seus dados no DataFrame `df`
+# Certifique-se de que as colunas correspondem aos grupos mencionados
+columns = ['T-Student', 'Full', 'Bootstrap', 'Split']
+data = df[columns]
 
-# Exibir os resultados
-print(tukey)
+# Separar os valores de cada grupo
+t_student = data['T-Student']
+full = data['Full']
+bootstrap = data['Bootstrap']
+split = data['Split']
 
-from statsmodels.stats.multicomp import MultiComparison
-import matplotlib.pyplot as plt
+# Aplicar o teste de Kruskal-Wallis
+stat, p_value = kruskal(t_student, full, bootstrap, split)
+print(f"Estatística do teste: {stat}")
+print(f"P-valor: {p_value}")
 
-# Configurar os dados para o teste
-mc = MultiComparison(data_long['Mean Width'], data_long['Method'])
-tukey_result = mc.tukeyhsd(alpha=0.05)
+if p_value < 0.05:
+    print("Rejeitamos a hipótese nula: pelo menos um dos grupos é diferente.")
+else:
+    print("Não rejeitamos a hipótese nula: todos os grupos têm distribuições semelhantes.")
 
-# Plotar o gráfico de comparações Tukey
-fig = tukey_result.plot_simultaneous(comparison_name='T-Student', figsize=(8, 6))
-plt.title('Tukey HSD Confidence Intervals')
-plt.xlabel('Mean Difference')
-plt.grid(True, linestyle='--', alpha=0.6)
-plt.show()
+# Organizar os dados no formato longo para o teste de Dunn
+data_long = pd.melt(data.reset_index(), id_vars=['index'], value_vars=columns)
+data_long.columns = ['Index', 'Group', 'Value']
 
-import numpy as np
+# Verificar se as colunas foram configuradas corretamente
+assert 'Value' in data_long.columns, "A coluna 'Value' não está no DataFrame."
+assert 'Group' in data_long.columns, "A coluna 'Group' não está no DataFrame."
+
+# Aplicar o teste de Dunn com ajuste Bonferroni
+posthoc = sp.posthoc_dunn(data_long, val_col='Value', group_col='Group', p_adjust='bonferroni')
+
+print("\nResultados do teste de Dunn (pós-hoc):")
+print(posthoc)
+
+"""SHAPIRO-WILK TEST para verificar a normalidade Dados de Largura COM SW190"""
+
+### upload arquivo
+from google.colab import files
+uploaded = files.upload()
+
+df = pd.read_excel('larguraSW_results.xlsx')
+df
+
+"""O Teste de Kruskal-Wallis: pra determina se há diferenças significativas entre os grupos. E o Teste de Dunn: Pra identificar quais grupos específicos apresentam diferenças significativas.  O ajuste de Bonferroni é usado para evitar falsos positivos."""
+
 import pandas as pd
-import seaborn as sns
+from scipy.stats import kruskal
+import scikit_posthocs as sp
 
-# Criar matriz de valores p ajustados (baseado no resultado do Tukey)
-p_values_matrix = pd.DataFrame(
-    tukey_result._results_table.data[1:],
-    columns=tukey_result._results_table.data[0]
-)
+# Supondo que você tenha carregado seus dados no DataFrame `df`
+# Certifique-se de que as colunas correspondem aos grupos mencionados
+columns = ['T-Student', 'Full', 'Bootstrap', 'Split']
+data = df[columns]
 
-# Filtrar apenas os valores p e criar um heatmap
-p_values = p_values_matrix.pivot(index='group1', columns='group2', values='p-adj')
+# Separar os valores de cada grupo
+t_student = data['T-Student']
+full = data['Full']
+bootstrap = data['Bootstrap']
+split = data['Split']
 
-plt.figure(figsize=(8, 6))
-sns.heatmap(p_values, annot=True, fmt=".3f", cmap="coolwarm", cbar=True)
-plt.title('P-value Matrix (Tukey HSD)')
-plt.show()
+# Aplicar o teste de Kruskal-Wallis
+stat, p_value = kruskal(t_student, full, bootstrap, split)
+print(f"Estatística do teste: {stat}")
+print(f"P-valor: {p_value}")
 
-# Plotar o violin plot
-plt.figure(figsize=(8, 6))
-sns.violinplot(x='Method', y='Mean Width', data=data_long, palette='muted')
+if p_value < 0.05:
+    print("Rejeitamos a hipótese nula: pelo menos um dos grupos é diferente.")
+else:
+    print("Não rejeitamos a hipótese nula: todos os grupos têm distribuições semelhantes.")
 
-# Ajustar o gráfico
-plt.title('Coverage Distributions by Method', fontsize=14)
-plt.xlabel('Method', fontsize=12)
-plt.ylabel('Mean Width', fontsize=12)
-plt.grid(True, linestyle='--', alpha=0.6)
-plt.show()
+# Organizar os dados no formato longo para o teste de Dunn
+data_long = pd.melt(data.reset_index(), id_vars=['index'], value_vars=columns)
+data_long.columns = ['Index', 'Group', 'Value']
+
+# Verificar se as colunas foram configuradas corretamente
+assert 'Value' in data_long.columns, "A coluna 'Value' não está no DataFrame."
+assert 'Group' in data_long.columns, "A coluna 'Group' não está no DataFrame."
+
+# Aplicar o teste de Dunn com ajuste Bonferroni
+posthoc = sp.posthoc_dunn(data_long, val_col='Value', group_col='Group', p_adjust='bonferroni')
+
+print("\nResultados do teste de Dunn (pós-hoc):")
+print(posthoc)
